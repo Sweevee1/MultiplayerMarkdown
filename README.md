@@ -41,8 +41,8 @@ Known gap: JWTs are long-lived (24h) rather than using rotating refresh tokens â
 Requires Docker with Compose v2.
 
 ```bash
-git clone https://github.com/<your-username>/multiplayer-markdown.git
-cd multiplayer-markdown
+git clone https://github.com/Sweevee1/MultiplayerMarkdown.git
+cd MultiplayerMarkdown
 cp .env.example .env
 ```
 

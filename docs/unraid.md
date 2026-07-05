@@ -2,7 +2,7 @@
 
 There's no Community Applications entry for this app (it's not published there), so it isn't a one-click install — but everything below is done through Unraid's web GUI, no SSH required. There are two ways to do it, depending on whether you already run a reverse proxy on your Unraid box.
 
-**Every image is prebuilt and published automatically to GitHub Container Registry** (`ghcr.io/<your-username>/multiplayer-markdown-sync-server`) whenever this repo's `main` branch changes — Unraid just pulls it, it never needs to build anything itself.
+**Every image is prebuilt and published automatically to GitHub Container Registry** (`ghcr.io/sweevee1/multiplayer-markdown-sync-server`) whenever this repo's `main` branch changes — Unraid just pulls it, it never needs to build anything itself.
 
 ## Method A — single container + your existing reverse proxy (recommended)
 
@@ -11,7 +11,7 @@ Most Unraid users already run a reverse proxy container for TLS/domains (Nginx P
 1. **Docker tab → Add Container.**
 2. Fill in the template manually:
    - **Name:** `multiplayer-markdown`
-   - **Repository:** `ghcr.io/<your-username>/multiplayer-markdown-sync-server:latest`
+   - **Repository:** `ghcr.io/sweevee1/multiplayer-markdown-sync-server:latest`
    - **Network Type:** `bridge`
    - **Port mappings** (container → host, pick any free host ports):
      - `4444` → `4444` (WebSocket / CRDT protocol)
@@ -43,7 +43,7 @@ If you don't already have a reverse proxy and would rather deploy the exact same
 
    services:
      sync-server:
-       image: ghcr.io/<your-username>/multiplayer-markdown-sync-server:latest
+       image: ghcr.io/sweevee1/multiplayer-markdown-sync-server:latest
        restart: unless-stopped
        environment:
          - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in this stack's .env}
