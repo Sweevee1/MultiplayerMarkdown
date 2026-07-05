@@ -1,0 +1,13 @@
+{$DOMAIN} {
+	# HTTP login/rooms/attachments API
+	handle /api/* {
+		reverse_proxy sync-server:4445
+	}
+
+	# Everything else is the Hocuspocus WebSocket/CRDT protocol.
+	# Caddy handles the WS upgrade headers and TLS automatically —
+	# no special config needed for the WebSocket path itself.
+	handle {
+		reverse_proxy sync-server:4444
+	}
+}

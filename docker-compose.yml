@@ -1,0 +1,42 @@
+name: multiplayer-markdown
+
+services:
+  sync-server:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile
+    image: multiplayer-markdown-sync-server:local
+    restart: unless-stopped
+    environment:
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env — see .env.example}
+      - PORT=4444
+      - HTTP_API_PORT=4445
+      - VAULTS_ROOT=/data/vaults
+      - DB_PATH=/data/db/collab.sqlite3
+      - ATTACHMENTS_ROOT=/data/attachments
+    volumes:
+      - ./data/db:/data/db
+      - ./data/vaults:/data/vaults
+      - ./data/attachments:/data/attachments
+    expose:
+      - "4444"
+      - "4445"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - sync-server
+
+volumes:
+  caddy_data:
+  caddy_config:

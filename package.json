@@ -1,0 +1,14 @@
+{
+  "name": "multiplayer-markdown",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Self-hosted real-time collaborative sync for Obsidian vaults, with per-folder permissions.",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev:server": "pnpm --filter @multiplayer-markdown/server run dev",
+    "dev:plugin": "pnpm --filter @multiplayer-markdown/plugin run dev"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

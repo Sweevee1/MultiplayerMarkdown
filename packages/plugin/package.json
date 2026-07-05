@@ -1,0 +1,26 @@
+{
+  "name": "@multiplayer-markdown/plugin",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -p tsconfig.json && node esbuild.config.mjs production",
+    "sync-test-vaults": "node sync-test-vaults.mjs"
+  },
+  "dependencies": {
+    "@multiplayer-markdown/sync-core": "workspace:*",
+    "@hocuspocus/provider": "^4.3.0",
+    "y-codemirror.next": "^0.3.5",
+    "yjs": "^13.6.31"
+  },
+  "devDependencies": {
+    "obsidian": "^1.13.1",
+    "@codemirror/state": "6.5.0",
+    "@codemirror/view": "6.38.6",
+    "typescript": "^5.6.3",
+    "esbuild": "^0.28.1",
+    "builtin-modules": "^5.3.0",
+    "@types/node": "^22.9.0"
+  }
+}
