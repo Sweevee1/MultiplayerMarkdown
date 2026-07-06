@@ -24,21 +24,29 @@ function waitForSynced(provider: HocuspocusProvider, timeoutMs = 5000): Promise<
 }
 
 /**
- * Deterministic per-username color so the same person looks the same across
- * sessions/devices — used for both CM6 remote cursors and file-explorer
- * presence dots. Hue is restricted to cyan/blue/purple/magenta (~185-330)
- * and deliberately never red, orange, yellow, or green: those hues already
- * carry UI meaning elsewhere (error/warning/success) and a person's color
- * getting misread as a status color would be worse than a smaller palette.
+ * Deterministic per-username hue so the same person looks the same across
+ * sessions/devices. Restricted to cyan/blue/purple/magenta (~185-330) and
+ * deliberately never red, orange, yellow, or green: those hues already carry
+ * UI meaning elsewhere (error/warning/success) and a person's color getting
+ * misread as a status color would be worse than a smaller palette.
  */
-export function colorForUsername(username: string): string {
+function hueForUsername(username: string): number {
   let hash = 0;
   for (let i = 0; i < username.length; i++) {
     hash = (hash << 5) - hash + username.charCodeAt(i);
     hash |= 0;
   }
-  const hue = 185 + (Math.abs(hash) % 145);
-  return `hsl(${hue}, 70%, 45%)`;
+  return 185 + (Math.abs(hash) % 145);
+}
+
+/** Used for CM6 remote cursors/carets — needs enough contrast to read clearly against editor text. */
+export function colorForUsername(username: string): string {
+  return `hsl(${hueForUsername(username)}, 70%, 45%)`;
+}
+
+/** Same per-person hue as colorForUsername, softened for the file-explorer presence pills. */
+export function pastelColorForUsername(username: string): string {
+  return `hsl(${hueForUsername(username)}, 60%, 78%)`;
 }
 
 /**
