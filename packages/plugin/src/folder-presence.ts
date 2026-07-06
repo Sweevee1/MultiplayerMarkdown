@@ -1,5 +1,5 @@
 import { setIcon, type App, type WorkspaceLeaf } from "obsidian";
-import { pastelColorForUsername, type ActiveRoom, type RoomManager } from "./room-manager.js";
+import { colorForUsername, type ActiveRoom, type RoomManager } from "./room-manager.js";
 
 const BADGE_CLASS = "mm-folder-badge";
 const MAX_VISIBLE_DOTS = 4;
@@ -52,9 +52,10 @@ function presenceUsersFor(room: ActiveRoom): PresenceUser[] {
   awareness.getStates().forEach((state) => {
     const name = state?.user?.name;
     if (typeof name === "string" && name.length > 0) {
-      // Deliberately not state.user.color (that's the more saturated cursor
-      // color) — pills use a softer, pastel rendering of the same per-person hue.
-      users.push({ name, color: pastelColorForUsername(name) });
+      // Same color as that person's CM6 cursor — state.user.color is the
+      // literal value broadcast for the cursor, so this guarantees a match
+      // rather than risking drift from recomputing it separately.
+      users.push({ name, color: state.user?.color ?? colorForUsername(name) });
     }
   });
   return users;
