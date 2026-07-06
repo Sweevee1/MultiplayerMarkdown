@@ -1,0 +1,54 @@
+name: Release Obsidian plugin
+
+# Tag convention matches Obsidian's own plugin template: a bare semver tag
+# with no "v" prefix (e.g. "0.1.0"), so it never collides with the "v*"
+# tags docker-publish.yml uses for server image releases.
+on:
+  push:
+    tags: ["*.*.*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build sync-core
+        run: pnpm --filter @multiplayer-markdown/sync-core run build
+
+      - name: Build plugin
+        run: pnpm --filter @multiplayer-markdown/plugin run build
+
+      # Catches the case where someone tags a release without bumping
+      # manifest.json first — BRAT compares the tag against this file to
+      # detect updates, so a mismatch here would silently confuse it.
+      - name: Verify tag matches manifest.json version
+        run: |
+          MANIFEST_VERSION=$(node -p "require('./packages/plugin/manifest.json').version")
+          if [ "$MANIFEST_VERSION" != "${{ github.ref_name }}" ]; then
+            echo "Tag ${{ github.ref_name }} does not match manifest.json version $MANIFEST_VERSION"
+            exit 1
+          fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: |
+            packages/plugin/main.js
+            packages/plugin/manifest.json

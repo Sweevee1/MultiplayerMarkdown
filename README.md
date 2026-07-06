@@ -123,16 +123,22 @@ The [full CLI command list](#every-admin-command) below still works too, if you'
 
 ## Step 3: Install the Obsidian plugin
 
-The plugin isn't in Obsidian's official plugin store yet, so for now it's a manual copy-in:
+The plugin isn't in Obsidian's official plugin store yet. The easiest way to install it (and get automatic updates) is **BRAT**, a community plugin made for exactly this:
 
-1. Download `main.js` and `manifest.json` — either from a [release](../../releases), or build them yourself (see [CLAUDE.md](./CLAUDE.md) if you want to build from source).
-2. In the vault you want to use, create a folder at `.obsidian/plugins/multiplayer-markdown/` and put both files in it.
-3. In Obsidian, go to **Settings → Community plugins**, turn on community plugins if you haven't already, then find **Multiplayer Markdown** in the list and enable it.
-4. Open the plugin's settings and fill in:
+1. In Obsidian: **Settings → Community plugins → Browse**, search for **BRAT** (full name "Obsidian42 - BRAT"), install it, and enable it.
+2. Open BRAT's settings (or run the command **BRAT: Add a beta plugin for testing** from the command palette).
+3. Paste in this repo's address: `Sweevee1/MultiplayerMarkdown`, and confirm.
+4. BRAT downloads and installs the plugin automatically. Go to **Settings → Community plugins** and enable **Multiplayer Markdown**.
+5. From here on, BRAT checks for new releases and can update the plugin for you — no manual re-downloading.
+
+**If you'd rather not use BRAT**, you can install it by hand instead: download `main.js` and `manifest.json` from a [release](../../releases) (or build them yourself — see [CLAUDE.md](./CLAUDE.md)), create a folder at `.obsidian/plugins/multiplayer-markdown/` in your vault, and put both files in it. Then enable it the same way in **Settings → Community plugins**.
+
+Either way, once it's enabled:
+1. Open the plugin's settings and fill in:
    - **WebSocket URL** — `wss://<your-domain>` (or `ws://localhost:4444` if you're just testing on your own machine)
    - **API URL** — `https://<your-domain>` (or `http://localhost:4445` for local testing)
-5. Log in with the username and password from Step 2.
-6. Link your room to a local folder in the vault: pick the room you created, pick a folder, and you're live.
+2. Log in with the username and password from Step 2.
+3. Link your room to a local folder in the vault: pick the room you created, pick a folder, and you're live.
 
 Repeat Step 3 on every device or vault you want in on the action. Viewers can read and watch edits happen live but can't type; editors get full co-editing.
 
