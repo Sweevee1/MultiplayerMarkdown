@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "description": "Self-hosted real-time collaborative sync for Obsidian vaults, with per-folder permissions.",
+  "packageManager": "pnpm@11.10.0",
   "scripts": {
     "build": "pnpm -r run build",
     "dev:server": "pnpm --filter @multiplayer-markdown/server run dev",
