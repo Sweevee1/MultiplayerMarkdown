@@ -38,3 +38,18 @@ COPY --from=build /prod/server /prod/server
 WORKDIR /prod/server
 EXPOSE 4444 4445
 CMD ["node", "dist/index.js"]
+
+# All-in-one image for Cloudflare Tunnel / Unraid style deployments: bundles
+# a small internal Caddy (path-splits /api/* vs the WebSocket catch-all) in
+# front of the same server, so the outside world only ever sees one port.
+# Caddy and Node share this container's network namespace, so the baked-in
+# Caddyfile talks to plain `localhost` — no env vars, no bind-mounted config.
+FROM base AS allinone
+COPY --from=caddy:2 /usr/bin/caddy /usr/bin/caddy
+COPY --from=build /prod/server /prod/server
+COPY packages/server/docker/Caddyfile /etc/caddy/Caddyfile
+COPY packages/server/docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+WORKDIR /prod/server
+EXPOSE 8080
+ENTRYPOINT ["/entrypoint.sh"]

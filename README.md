@@ -20,28 +20,36 @@ Pick the section that matches your setup. If you're not sure, go with **Option A
 
 ### Option A — Cloudflare Tunnel (recommended: no port forwarding, no certificates to manage)
 
-Cloudflare Tunnel runs a small program (`cloudflared`) alongside the app. It connects outward to Cloudflare instead of the other way around, so your router doesn't need anything opened up, and Cloudflare takes care of the `https://` certificate for you. You'll need a domain name added to a free Cloudflare account.
+This option assumes you already have Cloudflare's tunnel connector (`cloudflared`) running as its own thing — for example, Unraid's "Cloudflare Network Tunnel" app from Community Apps, or a `cloudflared` container you set up separately. This project doesn't run `cloudflared` for you; it just needs to give your tunnel exactly one address to point at.
 
-This app needs two internal ports reachable at one public address (a websocket port and a separate HTTP API port — see [CLAUDE.md](./CLAUDE.md) if you're curious why). Rather than creating two separate rules in Cloudflare pointing at two different ports — which works, but trips a real bug in Cloudflare's dashboard (a confusing "A, AAAA, or CNAME record with that host already exists" error when you add the second rule) — this repo bundles a small internal Caddy that merges both ports into one, so Cloudflare only ever needs a single rule.
+The app itself needs two internal ports (a websocket port and a separate HTTP API port — see [CLAUDE.md](./CLAUDE.md) if you're curious why), so this repo publishes a single all-in-one image with a small internal Caddy already baked in to merge both into one port. Your tunnel only ever needs one route pointed at one address — no juggling two ports, no risk of the "two rules under one hostname" bug some Cloudflare dashboard flows have.
 
-1. Go to the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/) → **Networks → Tunnels → Create a tunnel** → pick **Docker** as the connector type. Copy the token it shows you (a long string after `--token` in the example command) — you won't run that command directly, just save the token for step 3.
-2. On your server:
-   ```bash
-   git clone https://github.com/Sweevee1/MultiplayerMarkdown.git
-   cd MultiplayerMarkdown
-   cp .env.example .env
-   ```
-   Open `.env` and set:
-   - `JWT_SECRET` — generate with `openssl rand -hex 32`
-   - `TUNNEL_TOKEN` — the token you copied in step 1
-   (You can ignore `DOMAIN` here — it's only used by Option B.)
-3. Start everything with the `tunnel` profile, which brings up the app, the internal Caddy, and `cloudflared` together on one Docker network:
-   ```bash
-   docker compose --profile tunnel up --build -d
-   ```
-   (On Unraid, see [docs/unraid-compose.md](./docs/unraid-compose.md#option-a-cloudflare-tunnel-bundled-stack) instead — the web-interface Docker tab can't easily join containers to the same custom network the way Compose does.)
-4. Back in the Cloudflare dashboard, add **one** Public Hostname to the tunnel: your domain, no path (catch-all), Service `HTTP`, URL `caddy-tunnel:8080`.
-5. That's it. No ports to open, no certificate to renew, and only one DNS record ever gets created. Your app is now live at `https://<your-domain>`. Move on to Step 2.
+**If you're on Unraid**, use the web interface directly — no Docker Compose needed:
+1. Go to the **Docker** tab → **Add Container**, and fill in:
+   - **Name:** `Multiplayer Markdown`
+   - **Repository:** `ghcr.io/sweevee1/multiplayer-markdown:latest`
+   - **Network Type:** `bridge`
+   - **Port mappings:** one — container `8080` → any free port on your Unraid box
+   - **Path mappings:**
+     - `/data/db` → `/mnt/user/appdata/multiplayer-markdown/db`
+     - `/data/vaults` → `/mnt/user/appdata/multiplayer-markdown/vaults`
+     - `/data/attachments` → `/mnt/user/appdata/multiplayer-markdown/attachments`
+   - **Environment variables:** `JWT_SECRET` — a random value used internally for security. Open Unraid's built-in terminal (the `>_` icon top-right), run `openssl rand -hex 32`, and paste the result in.
+2. **Apply**, then check the container's log — you should see both the server and Caddy start up.
+3. In your Cloudflare Tunnel app (Zero Trust dashboard → your tunnel → **Routes** → **Add route → Published application**), set: your domain, no path (catch-all), Service `HTTP`, URL `http://<your-unraid-LAN-IP>:<the port you mapped>`.
+4. That's it — one container, one port, one route. Move on to Step 2.
+
+**If you're on any other Docker host**, run the same image directly:
+```bash
+docker run -d --name multiplayer-markdown --restart unless-stopped \
+  -p 8080:8080 \
+  -e JWT_SECRET=$(openssl rand -hex 32) \
+  -v ./data/db:/data/db \
+  -v ./data/vaults:/data/vaults \
+  -v ./data/attachments:/data/attachments \
+  ghcr.io/sweevee1/multiplayer-markdown:latest
+```
+Then point your tunnel's route at `http://<this-machine's-LAN-IP>:8080`. Move on to Step 2.
 
 ### Option B — Docker Compose with a built-in address helper (any Linux/Mac/Windows machine with Docker)
 
@@ -90,7 +98,7 @@ There's no one-click app for this yet, so you'll fill in a container by hand. Ta
      - `JWT_SECRET` — a random value used internally for security. Open Unraid's built-in terminal (the `>_` icon top-right), run `openssl rand -hex 32`, and paste the result in here.
 3. Click **Apply**, then check the container's log (click its icon in the Docker tab). It should say it's running.
 4. Now make it reachable from outside your network. Pick one:
-   - **Cloudflare Tunnel** (recommended, no port forwarding): don't use this standalone container for this path. Instead, delete it and install the **Compose Manager** app from Unraid's Apps tab, then follow [docs/unraid-compose.md](./docs/unraid-compose.md#option-a-cloudflare-tunnel-bundled-stack). Compose runs the app, an internal Caddy, and `cloudflared` together on one Docker network, so Cloudflare only ever needs a single rule pointed at one container — avoiding the two-LAN-port setup (and a real Cloudflare dashboard bug that trips up the two-rule approach).
+   - **Cloudflare Tunnel** (recommended, no port forwarding): don't use this standalone container for this path — delete it and follow **Option A** above instead. That option uses a different, single-port image purpose-built for Cloudflare Tunnel, so there's only one port to map and one route to configure.
    - **An existing reverse proxy** (Nginx Proxy Manager, SWAG, Caddy, etc.): point it at this container with two rules — addresses starting with `/api/` go to port `4445`, everything else goes to port `4444`, with "websocket support" turned on (this is what makes the live typing work; without it, the app connects but edits never sync). In Nginx Proxy Manager: create a proxy host for your domain pointing at port `4444` with "Websockets Support" switched on, then add a custom location block for `/api/` pointing at port `4445`.
    - **Neither of the above yet**: install the **Compose Manager** app from Unraid's Apps tab, and see [docs/unraid-compose.md](./docs/unraid-compose.md#option-b-your-own-https-address-bundled-stack) for a copy-paste stack that bundles its own `https://` helper.
 5. Create your first account by opening a console inside the container: **Docker tab → click the container's icon → Console**, then run the command from Step 2 below.
@@ -151,7 +159,7 @@ room revoke <roomId> <username>                    # remove someone's access
 ## Something not working?
 
 - **Nothing loads at all**: check the server's logs for errors. If you're using Cloudflare Tunnel, also check the tunnel's status in the Zero Trust dashboard, which should say "Healthy." On a reverse proxy, make sure the ports you mapped are actually reachable and not blocked by a firewall.
-- **You can connect and log in, but edits don't show up for the other person**: this is almost always a websocket setting on whatever sits in front of the app. On a reverse proxy, make sure "websocket support" is switched on. Cloudflare Tunnel should handle this automatically, but double-check the catch-all `/*` Public Hostname rule points at port `4444`, not `4445`.
+- **You can connect and log in, but edits don't show up for the other person**: this is almost always a websocket setting on whatever sits in front of the app. On a reverse proxy, make sure "websocket support" is switched on. On Cloudflare Tunnel (Option A's all-in-one image), check the container's logs for both a `node` startup line and a Caddy startup line — if only one shows up, the other process failed to start.
 - Still stuck, or curious *why* something is built the way it is? See [CLAUDE.md](./CLAUDE.md).
 
 ## License

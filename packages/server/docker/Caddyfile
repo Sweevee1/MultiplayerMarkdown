@@ -1,11 +1,11 @@
 :8080 {
 	# HTTP login/rooms/attachments API
 	handle /api/* {
-		reverse_proxy {$SYNC_SERVER_HOST:sync-server}:4445
+		reverse_proxy localhost:4445
 	}
 
 	# Everything else is the Hocuspocus WebSocket/CRDT protocol.
 	handle {
-		reverse_proxy {$SYNC_SERVER_HOST:sync-server}:4444
+		reverse_proxy localhost:4444
 	}
 }
