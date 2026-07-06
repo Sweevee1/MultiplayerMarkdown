@@ -5,6 +5,7 @@ import { yCollab } from "y-codemirror.next";
 import { getOrCreateFileText, toRelativePath } from "@multiplayer-markdown/sync-core";
 import { RoomManager } from "./room-manager.js";
 import { CollabSettingTab } from "./settings-tab.js";
+import { FolderPresenceManager } from "./folder-presence.js";
 import { DEFAULT_SETTINGS, type CollabSettings } from "./settings.js";
 
 let activeRoomManager: RoomManager | null = null;
@@ -74,12 +75,24 @@ function onLayoutReady(app: Plugin["app"], timeoutMs = 5000): Promise<void> {
 export default class CollabPlugin extends Plugin {
   settings: CollabSettings = DEFAULT_SETTINGS;
   roomManager!: RoomManager;
+  folderPresenceManager!: FolderPresenceManager;
 
   async onload() {
     await this.loadSettingsData();
 
-    this.roomManager = new RoomManager(this.app, this.settings.wsUrl, this.settings.apiUrl, () => this.settings.token);
+    this.roomManager = new RoomManager(
+      this.app,
+      this.settings.wsUrl,
+      this.settings.apiUrl,
+      () => this.settings.token,
+      () => this.settings.username
+    );
     activeRoomManager = this.roomManager;
+    this.folderPresenceManager = new FolderPresenceManager(this.app, this.roomManager);
+
+    // The file explorer view can be recreated independently of this plugin
+    // (e.g. on vault reload) — re-render badges whenever that might have happened.
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.folderPresenceManager.renderAll()));
 
     this.registerEditorExtension(collabBinderExtension);
     this.app.workspace.updateOptions();
@@ -115,6 +128,7 @@ export default class CollabPlugin extends Plugin {
       await onLayoutReady(this.app);
       if (this.settings.token) {
         await this.roomManager.syncToLinkedRooms(this.settings.linkedRooms);
+        this.folderPresenceManager.refresh();
         this.applyToOpenMarkdownEditors();
       }
     } catch (err) {
@@ -140,6 +154,7 @@ export default class CollabPlugin extends Plugin {
   }
 
   onunload() {
+    this.folderPresenceManager?.destroy();
     this.roomManager?.destroyAll();
     activeRoomManager = null;
     console.log("[multiplayer-markdown] plugin unloaded");

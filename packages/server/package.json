@@ -12,6 +12,7 @@
     "verify:auth": "tsx src/verify-auth.ts",
     "verify:attachments": "tsx src/verify-attachments.ts",
     "verify:admin": "tsx src/verify-admin-api.ts",
+    "verify:rooms": "tsx src/verify-rooms.ts",
     "cli": "tsx src/cli.ts"
   },
   "dependencies": {

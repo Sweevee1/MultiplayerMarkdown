@@ -39,17 +39,11 @@ export interface AuthenticatedMembership {
 }
 
 /**
- * The single place ALL permission logic lives — shared by both the
- * WebSocket handshake (onAuthenticate) and the HTTP attachment routes
- * (Phase 5): verifies the JWT, checks token_version for instant revocation,
- * and looks up membership for the given room, throwing if any check fails.
+ * Shared by every authenticate* helper below: verifies the JWT, then
+ * re-checks token_version against the DB so revocation is instant (a
+ * verified-but-revoked token must not be treated as valid).
  */
-export function authenticateForRoom(
-  db: Database.Database,
-  jwtSecret: string,
-  token: string,
-  roomId: string
-): AuthenticatedMembership {
+function verifyAndLoadUser(db: Database.Database, jwtSecret: string, token: string) {
   let payload: AppJwtPayload;
   try {
     payload = verifyJwt(token, jwtSecret);
@@ -61,6 +55,22 @@ export function authenticateForRoom(
   if (!user || user.token_version !== payload.tokenVersion) {
     throw new Error("Token has been revoked");
   }
+  return user;
+}
+
+/**
+ * The single place ALL room-permission logic lives — shared by the
+ * WebSocket handshake (onAuthenticate) and the HTTP attachment/room-member
+ * routes: verifies the token (see verifyAndLoadUser) and looks up
+ * membership for the given room, throwing if either check fails.
+ */
+export function authenticateForRoom(
+  db: Database.Database,
+  jwtSecret: string,
+  token: string,
+  roomId: string
+): AuthenticatedMembership {
+  const user = verifyAndLoadUser(db, jwtSecret, token);
 
   const membership = getMembership(db, roomId, user.id);
   if (!membership) {
@@ -70,35 +80,41 @@ export function authenticateForRoom(
   return { userId: user.id, username: user.username, role: membership.role };
 }
 
+export interface AuthenticatedUser {
+  userId: number;
+  username: string;
+}
+
+/**
+ * "Is this a valid, non-revoked account" with no further authorization
+ * check — used by routes any logged-in user may call (e.g. self-service
+ * room creation), as opposed to authenticateForRoom (room membership) or
+ * authenticateAdmin (admin flag) below.
+ */
+export function authenticateUser(db: Database.Database, jwtSecret: string, token: string): AuthenticatedUser {
+  const user = verifyAndLoadUser(db, jwtSecret, token);
+  return { userId: user.id, username: user.username };
+}
+
 export interface AuthenticatedAdmin {
   userId: number;
   username: string;
 }
 
 /**
- * Same verification chain as authenticateForRoom (verify the JWT, then
+ * Same verification chain as authenticateUser (verify the JWT, then
  * re-check token_version against the DB so revocation is instant), but the
- * authorization condition is "is this user an admin" instead of room
- * membership. JWTs never carry an admin claim — is_admin is re-read from
- * the database on every call, so revoking admin status takes effect on the
- * very next request, not just the next login.
+ * authorization condition is "is this user an admin" instead of just "is
+ * this a valid account". JWTs never carry an admin claim — is_admin is
+ * re-read from the database on every call, so revoking admin status takes
+ * effect on the very next request, not just the next login.
  */
 export function authenticateAdmin(
   db: Database.Database,
   jwtSecret: string,
   token: string
 ): AuthenticatedAdmin {
-  let payload: AppJwtPayload;
-  try {
-    payload = verifyJwt(token, jwtSecret);
-  } catch {
-    throw new Error("Invalid or expired token");
-  }
-
-  const user = getUserById(db, payload.sub);
-  if (!user || user.token_version !== payload.tokenVersion) {
-    throw new Error("Token has been revoked");
-  }
+  const user = verifyAndLoadUser(db, jwtSecret, token);
 
   if (user.is_admin !== 1) {
     throw new Error(`User ${user.username} is not an admin`);

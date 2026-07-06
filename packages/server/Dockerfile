@@ -12,6 +12,20 @@ FROM node:22-slim AS base
 RUN corepack enable
 WORKDIR /app
 
+# Defaults matching the /data/db, /data/vaults, /data/attachments volume
+# mappings documented in the README and docs/unraid-compose.md. Without
+# these, the app falls back to resolving its relative "./data/..." defaults
+# against WORKDIR (/prod/server), which is NOT under any of those mounted
+# paths — so data silently lands in the container's own writable layer
+# instead of the bind mount, and is lost the next time the container is
+# recreated (e.g. an image update). This actually happened: a real
+# deployment lost every room/user except the env-var-bootstrapped admin
+# account, because that account alone gets recreated on every boot while
+# everything else lived in the DB file that never made it onto the volume.
+ENV DB_PATH=/data/db/collab.sqlite3
+ENV VAULTS_ROOT=/data/vaults
+ENV ATTACHMENTS_ROOT=/data/attachments
+
 FROM base AS build
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
 COPY packages/sync-core/package.json packages/sync-core/package.json

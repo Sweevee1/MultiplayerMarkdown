@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./assets/icon.png" width="120" alt="Multiplayer Markdown icon">
+</p>
+
 # Multiplayer Markdown
 
 Live, Google-Docs-style co-editing for [Obsidian](https://obsidian.md) notes, minus the subscription and the vendor lock-in. Your notes stay as plain `.md` files on a machine you control, not trapped in someone else's database.
@@ -164,6 +168,7 @@ room revoke <roomId> <username>                    # remove someone's access
 - **Your domain redirects somewhere unexpected instead of reaching the app** (e.g. to a URL shortener or a "domain for sale" page): this usually isn't anything in this project — it's a leftover redirect from before the domain pointed at Cloudflare, often set by your registrar. In the Cloudflare dashboard, check **Rules → Redirect Rules** *and* **Rules → Bulk Redirects** *and* **Page Rules** — these are three separate features and it's easy to only check one.
 - **You linked a room to a folder but nothing syncs, with no error anywhere**: double check the folder field in the plugin's settings — it needs to be the folder's path *relative to your vault* (e.g. `Shared` or `Notes/Team`), not a full path copied from your file explorer (e.g. not `C:\Users\you\Documents\MyVault\Shared`). Retype it by hand if you're not sure, then click away from the field to save.
 - **You can connect and log in, but edits don't show up for the other person**: this is almost always a websocket setting on whatever sits in front of the app. On a reverse proxy, make sure "websocket support" is switched on. On Cloudflare Tunnel (Option A's all-in-one image), check the container's logs for both a `node` startup line and a Caddy startup line — if only one shows up, the other process failed to start.
+- **Rooms and users disappear after a while, but your admin account keeps coming back**: this was a real bug in images built before this note was added — the app defaulted to writing its database and files inside the container itself instead of the mounted `/data/...` volumes, so anything not recreated by `ADMIN_USERNAME`/`ADMIN_PASSWORD` on boot was lost the next time the container got recreated (e.g. an image update). Pull the latest image to get the fix. If you already lost data this way, it isn't recoverable from the old container — just recreate the affected users and rooms once on the fixed image.
 - Still stuck, or curious *why* something is built the way it is? See [CLAUDE.md](./CLAUDE.md).
 
 ## License

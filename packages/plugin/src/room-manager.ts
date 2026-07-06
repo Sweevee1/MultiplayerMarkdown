@@ -24,6 +24,24 @@ function waitForSynced(provider: HocuspocusProvider, timeoutMs = 5000): Promise<
 }
 
 /**
+ * Deterministic per-username color so the same person looks the same across
+ * sessions/devices — used for both CM6 remote cursors and file-explorer
+ * presence dots. Hue is restricted to cyan/blue/purple/magenta (~185-330)
+ * and deliberately never red, orange, yellow, or green: those hues already
+ * carry UI meaning elsewhere (error/warning/success) and a person's color
+ * getting misread as a status color would be worse than a smaller palette.
+ */
+export function colorForUsername(username: string): string {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = (hash << 5) - hash + username.charCodeAt(i);
+    hash |= 0;
+  }
+  const hue = 185 + (Math.abs(hash) % 145);
+  return `hsl(${hue}, 70%, 45%)`;
+}
+
+/**
  * Owns one HocuspocusProvider + FileSyncEngine per linked room (a room = one
  * shared top-level folder). Replaces the single hardcoded provider/folder
  * from Phases 1-3 now that real accounts can be members of multiple rooms.
@@ -36,7 +54,8 @@ export class RoomManager {
     private app: App,
     private wsUrl: string,
     private apiUrl: string,
-    private getToken: () => string | null
+    private getToken: () => string | null,
+    private getUsername: () => string | null
   ) {}
 
   isPathLiveBound(vaultPath: string): boolean {
@@ -99,6 +118,11 @@ export class RoomManager {
           console.error(`[multiplayer-markdown] auth failed for room ${linked.roomId}: ${reason}`);
         },
       });
+
+      const username = this.getUsername();
+      if (username) {
+        provider.awareness?.setLocalStateField("user", { name: username, color: colorForUsername(username) });
+      }
 
       const syncEngine = new FileSyncEngine({
         app: this.app,

@@ -17,17 +17,21 @@ import {
 import {
   verifyPassword,
   signJwt,
-  verifyJwt,
   authenticateForRoom,
   authenticateAdmin,
+  authenticateUser,
   hashPassword,
   type AuthenticatedAdmin,
+  type AuthenticatedUser,
 } from "./auth.js";
 import { attachmentExists, readAttachment, writeAttachment } from "./attachments.js";
 import { ADMIN_HTML } from "./admin-ui.js";
 
 const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024; // 50MB — generous for note attachments, bounds memory use
 const ATTACHMENT_ROUTE = /^\/api\/rooms\/([^/]+)\/attachments\/([0-9a-f]{64})$/;
+const ROOM_MEMBERS_ROUTE = /^\/api\/rooms\/([^/]+)\/members$/;
+const ROOM_MEMBER_ROUTE = /^\/api\/rooms\/([^/]+)\/members\/([^/]+)$/;
+const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 const ADMIN_USER_REVOKE_ROUTE = /^\/api\/admin\/users\/([^/]+)\/revoke$/;
 const ADMIN_USER_ROUTE = /^\/api\/admin\/users\/([^/]+)$/;
 const ADMIN_ROOM_MEMBERS_ROUTE = /^\/api\/admin\/rooms\/([^/]+)\/members$/;
@@ -136,6 +140,27 @@ function requireAdmin(
   }
 }
 
+// Same shape as requireAdmin, but "is this a valid, non-revoked account"
+// rather than "is this an admin" — used by the self-service room routes.
+function requireUser(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  db: Database.Database,
+  jwtSecret: string
+): AuthenticatedUser | null {
+  const token = getBearerToken(req);
+  if (!token) {
+    sendJson(res, 401, { error: "Missing bearer token" });
+    return null;
+  }
+  try {
+    return authenticateUser(db, jwtSecret, token);
+  } catch (err) {
+    sendJson(res, 403, { error: err instanceof Error ? err.message : "Not authorized" });
+    return null;
+  }
+}
+
 export interface HttpApiOptions {
   db: Database.Database;
   jwtSecret: string;
@@ -183,26 +208,118 @@ export function createHttpApiServer({ db, jwtSecret, attachmentsRoot }: HttpApiO
       }
 
       if (req.method === "GET" && url.pathname === "/api/rooms") {
-        const token = getBearerToken(req);
-        if (!token) {
-          sendJson(res, 401, { error: "Missing bearer token" });
-          return;
-        }
+        const user = requireUser(req, res, db, jwtSecret);
+        if (!user) return;
 
-        let payload;
-        try {
-          payload = verifyJwt(token, jwtSecret);
-        } catch {
-          sendJson(res, 401, { error: "Invalid or expired token" });
-          return;
-        }
-
-        const rooms = listRoomsForUser(db, payload.sub).map((room) => ({
+        const rooms = listRoomsForUser(db, user.userId).map((room) => ({
           id: room.id,
           label: room.label,
           role: room.role,
         }));
         sendJson(res, 200, { rooms });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/rooms") {
+        const user = requireUser(req, res, db, jwtSecret);
+        if (!user) return;
+        const body = await readJsonBody(req);
+        const roomId = typeof body.roomId === "string" ? body.roomId.trim() : "";
+        const label = typeof body.label === "string" && body.label.trim() ? body.label.trim() : roomId;
+        if (!roomId || !ROOM_ID_PATTERN.test(roomId)) {
+          sendJson(res, 400, { error: "roomId is required and may only contain letters, numbers, - and _" });
+          return;
+        }
+        if (getRoom(db, roomId)) {
+          sendJson(res, 409, { error: `Room ${roomId} already exists` });
+          return;
+        }
+        const room = createRoom(db, roomId, label);
+        grantRoomAccess(db, roomId, user.userId, "editor");
+        sendJson(res, 201, { id: room.id, label: room.label, role: "editor" as const });
+        return;
+      }
+
+      const selfRoomMembersMatch = url.pathname.match(ROOM_MEMBERS_ROUTE);
+      if (selfRoomMembersMatch && req.method === "GET") {
+        const roomId = decodeURIComponent(selfRoomMembersMatch[1]);
+        const token = getBearerToken(req);
+        if (!token) {
+          sendJson(res, 401, { error: "Missing bearer token" });
+          return;
+        }
+        try {
+          authenticateForRoom(db, jwtSecret, token, roomId);
+        } catch (err) {
+          sendJson(res, 403, { error: err instanceof Error ? err.message : "Not authorized for this room" });
+          return;
+        }
+        sendJson(res, 200, { members: listMembersForRoom(db, roomId) });
+        return;
+      }
+
+      if (selfRoomMembersMatch && req.method === "POST") {
+        const roomId = decodeURIComponent(selfRoomMembersMatch[1]);
+        const token = getBearerToken(req);
+        if (!token) {
+          sendJson(res, 401, { error: "Missing bearer token" });
+          return;
+        }
+        let membership;
+        try {
+          membership = authenticateForRoom(db, jwtSecret, token, roomId);
+        } catch (err) {
+          sendJson(res, 403, { error: err instanceof Error ? err.message : "Not authorized for this room" });
+          return;
+        }
+        if (membership.role !== "editor") {
+          sendJson(res, 403, { error: "Only editors may invite members" });
+          return;
+        }
+        const body = await readJsonBody(req);
+        const username = typeof body.username === "string" ? body.username.trim() : "";
+        const role = body.role;
+        if (!username || (role !== "viewer" && role !== "editor")) {
+          sendJson(res, 400, { error: "username and role ('viewer'|'editor') are required" });
+          return;
+        }
+        const targetUser = getUserByUsername(db, username);
+        if (!targetUser) {
+          sendJson(res, 404, { error: `No such user: ${username}` });
+          return;
+        }
+        grantRoomAccess(db, roomId, targetUser.id, role);
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      const selfRoomMemberMatch = url.pathname.match(ROOM_MEMBER_ROUTE);
+      if (selfRoomMemberMatch && req.method === "DELETE") {
+        const roomId = decodeURIComponent(selfRoomMemberMatch[1]);
+        const username = decodeURIComponent(selfRoomMemberMatch[2]);
+        const token = getBearerToken(req);
+        if (!token) {
+          sendJson(res, 401, { error: "Missing bearer token" });
+          return;
+        }
+        let membership;
+        try {
+          membership = authenticateForRoom(db, jwtSecret, token, roomId);
+        } catch (err) {
+          sendJson(res, 403, { error: err instanceof Error ? err.message : "Not authorized for this room" });
+          return;
+        }
+        if (membership.role !== "editor") {
+          sendJson(res, 403, { error: "Only editors may remove members" });
+          return;
+        }
+        const targetUser = getUserByUsername(db, username);
+        if (!targetUser) {
+          sendJson(res, 404, { error: `No such user: ${username}` });
+          return;
+        }
+        revokeRoomAccess(db, roomId, targetUser.id);
+        sendJson(res, 200, { ok: true });
         return;
       }
 
