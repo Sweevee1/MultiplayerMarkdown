@@ -22,6 +22,34 @@ services:
       - "4444"
       - "4445"
 
+  # --- Cloudflare Tunnel setup (Option A in the README) ---
+  # Bundles a plain-HTTP Caddy (path-splits /api/* vs everything else, same
+  # as the "caddy" service below, just without automatic HTTPS since
+  # Cloudflare's edge already terminates TLS) and cloudflared itself into
+  # this compose network, so both resolve `sync-server` by container name
+  # with no manual `docker network connect` and no LAN IP/port needed.
+  # Start with: docker compose --profile tunnel up --build -d
+  caddy-tunnel:
+    image: caddy:2
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    volumes:
+      - ./Caddyfile.tunnel:/etc/caddy/Caddyfile:ro
+      - caddy_tunnel_data:/data
+      - caddy_tunnel_config:/config
+    depends_on:
+      - sync-server
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:?Paste the token Cloudflare showed you when creating the tunnel}
+    depends_on:
+      - caddy-tunnel
+
   caddy:
     image: caddy:2
     restart: unless-stopped
@@ -40,3 +68,5 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  caddy_tunnel_data:
+  caddy_tunnel_config:
