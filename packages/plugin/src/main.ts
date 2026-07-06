@@ -1,11 +1,12 @@
 import { Plugin, editorInfoField, MarkdownView } from "obsidian";
 import { EditorView, ViewPlugin, PluginValue } from "@codemirror/view";
-import { EditorState, StateEffect } from "@codemirror/state";
-import { yCollab } from "y-codemirror.next";
+import { EditorState, StateEffect, type Extension } from "@codemirror/state";
+import { yCollab, yRemoteSelections } from "y-codemirror.next";
 import { getOrCreateFileText, toRelativePath } from "@multiplayer-markdown/sync-core";
 import { RoomManager } from "./room-manager.js";
 import { CollabSettingTab } from "./settings-tab.js";
 import { FolderPresenceManager } from "./folder-presence.js";
+import { hardenedRemoteSelections } from "./remote-selections.js";
 import { DEFAULT_SETTINGS, type CollabSettings } from "./settings.js";
 
 let activeRoomManager: RoomManager | null = null;
@@ -36,7 +37,15 @@ function bindIfTarget(view: EditorView): void {
   // progress" and silently drops the reconfigure. Confirmed via direct
   // console capture during Phase 1 debugging.
   queueMicrotask(() => {
-    const effects = [StateEffect.appendConfig.of(yCollab(ytext, awareness))];
+    // yCollab's own remote-selections plugin can throw and get permanently
+    // destroyed by CM6 under a real race (see remote-selections.ts) — swap
+    // it for a hardened equivalent that can't take the rest of the room's
+    // cursors down with it. yCollab's declared return type is the opaque
+    // `Extension`, but it's actually always a flat array at runtime (see its
+    // own source) — safe to treat it as one here to filter a specific entry out.
+    const collabExtensions = (yCollab(ytext, awareness) as unknown as Extension[]).filter((ext) => ext !== yRemoteSelections);
+    if (awareness) collabExtensions.push(hardenedRemoteSelections);
+    const effects = [StateEffect.appendConfig.of(collabExtensions)];
     if (readOnly) {
       // Client-side only, for UX (avoid the awkward "type but nothing
       // happens" feel). The server's onAuthenticate already enforces this
