@@ -2,7 +2,7 @@
 
 Live, Google-Docs-style co-editing for [Obsidian](https://obsidian.md) notes, minus the subscription and the vendor lock-in. Your notes stay as plain `.md` files on a machine you control, not trapped in someone else's database.
 
-A few people can type in the same note at once and watch each other's cursors move in real time. It runs on hardware you own (a home server, a NAS, a cheap VPS), so there's no subscription and no company reading your notes. Folder-level permissions decide who can view versus edit, and there's no public sign-up page: an admin adds every account by running one command.
+A few people can type in the same note at once and watch each other's cursors move in real time. It runs on hardware you own (a home server, a NAS, a cheap VPS), so there's no subscription and no company reading your notes. Folder-level permissions decide who can view versus edit, and there's no public sign-up page: an admin adds every account through a simple web page.
 
 This guide assumes you've never set up a self-hosted app before. If you get stuck on a step, that's a bug in the guide, not you. The deeper technical background (how it's built, why certain decisions were made) lives in [CLAUDE.md](./CLAUDE.md), kept separate so it doesn't clutter this page.
 
@@ -34,7 +34,9 @@ The app itself needs two internal ports (a websocket port and a separate HTTP AP
      - `/data/db` → `/mnt/user/appdata/multiplayer-markdown/db`
      - `/data/vaults` → `/mnt/user/appdata/multiplayer-markdown/vaults`
      - `/data/attachments` → `/mnt/user/appdata/multiplayer-markdown/attachments`
-   - **Environment variables:** `JWT_SECRET` — a random value used internally for security. Open Unraid's built-in terminal (the `>_` icon top-right), run `openssl rand -hex 32`, and paste the result in.
+   - **Environment variables:**
+     - `JWT_SECRET` — a random value used internally for security. Open Unraid's built-in terminal (the `>_` icon top-right), run `openssl rand -hex 32`, and paste the result in.
+     - `ADMIN_USERNAME` and `ADMIN_PASSWORD` — pick a username and password for your own account now. The server creates it as an admin the first time it starts — no terminal needed to create your account.
 2. **Apply**, then check the container's log — you should see both the server and Caddy start up.
 3. In your Cloudflare Tunnel app (Zero Trust dashboard → your tunnel → **Routes** → **Add route → Published application**), set: your domain, no path (catch-all), Service `HTTP`, URL `http://<your-unraid-LAN-IP>:<the port you mapped>`.
 4. That's it — one container, one port, one route. Move on to Step 2.
@@ -44,6 +46,8 @@ The app itself needs two internal ports (a websocket port and a separate HTTP AP
 docker run -d --name multiplayer-markdown --restart unless-stopped \
   -p 8080:8080 \
   -e JWT_SECRET=$(openssl rand -hex 32) \
+  -e ADMIN_USERNAME=youruser \
+  -e ADMIN_PASSWORD=your-password \
   -v ./data/db:/data/db \
   -v ./data/vaults:/data/vaults \
   -v ./data/attachments:/data/attachments \
@@ -64,9 +68,10 @@ Use this if you'd rather skip Cloudflare. It gets you a working `https://` addre
    ```bash
    cp .env.example .env
    ```
-3. Open `.env` in a text editor and fill in two values:
+3. Open `.env` in a text editor and fill in:
    - `JWT_SECRET` — a random value used internally for security. Generate one by running `openssl rand -hex 32` and pasting the result in.
    - `DOMAIN` — the web address people will use to reach this (e.g. `notes.example.com`). If you're just trying it out on your own computer, leave this as `localhost`.
+   - `ADMIN_USERNAME` / `ADMIN_PASSWORD` — pick a username and password for your own account. The server creates it as an admin the first time it starts, so you don't need to run any command to create your first account.
 4. Start everything:
    ```bash
    docker compose up --build -d
@@ -96,34 +101,25 @@ There's no one-click app for this yet, so you'll fill in a container by hand. Ta
      - `/data/attachments` → `/mnt/user/appdata/multiplayer-markdown/attachments`
    - **Environment variables:**
      - `JWT_SECRET` — a random value used internally for security. Open Unraid's built-in terminal (the `>_` icon top-right), run `openssl rand -hex 32`, and paste the result in here.
+     - `ADMIN_USERNAME` / `ADMIN_PASSWORD` — pick a username and password for your own account now, and the server creates it as an admin the first time it starts.
 3. Click **Apply**, then check the container's log (click its icon in the Docker tab). It should say it's running.
 4. Now make it reachable from outside your network. Pick one:
    - **Cloudflare Tunnel** (recommended, no port forwarding): don't use this standalone container for this path — delete it and follow **Option A** above instead. That option uses a different, single-port image purpose-built for Cloudflare Tunnel, so there's only one port to map and one route to configure.
    - **An existing reverse proxy** (Nginx Proxy Manager, SWAG, Caddy, etc.): point it at this container with two rules — addresses starting with `/api/` go to port `4445`, everything else goes to port `4444`, with "websocket support" turned on (this is what makes the live typing work; without it, the app connects but edits never sync). In Nginx Proxy Manager: create a proxy host for your domain pointing at port `4444` with "Websockets Support" switched on, then add a custom location block for `/api/` pointing at port `4445`.
    - **Neither of the above yet**: install the **Compose Manager** app from Unraid's Apps tab, and see [docs/unraid-compose.md](./docs/unraid-compose.md#option-b-your-own-https-address-bundled-stack) for a copy-paste stack that bundles its own `https://` helper.
-5. Create your first account by opening a console inside the container: **Docker tab → click the container's icon → Console**, then run the command from Step 2 below.
+5. If you set `ADMIN_USERNAME`/`ADMIN_PASSWORD` above, that's your account — skip ahead to Step 2. Otherwise, create your first account by opening a console inside the container: **Docker tab → click the container's icon → Console**, then run the command from Step 2 below.
 
-## Step 2: Create your account
+## Step 2: Create your account and a room
 
-However you started the server, create yourself an admin account by running this inside the server (in Docker Compose, prefix it with `docker compose exec sync-server`; in Unraid, run it in the container's Console):
+If you set `ADMIN_USERNAME`/`ADMIN_PASSWORD` in Step 1, that account already exists — no commands to run. Go to `https://<your-domain>/api/admin` (or `http://localhost:4445/api/admin` for local testing) and log in.
 
+From that page, use the **Add user** form to create accounts for everyone else, and the **Create room** form to make a shared folder, then use **Manage members** on that room to grant people `viewer` or `editor` access. Everything from here on — adding people, creating rooms, granting/revoking access — happens on this page; nobody needs a terminal.
+
+**If you didn't set `ADMIN_USERNAME`/`ADMIN_PASSWORD`**, you'll need to create your first account once via the CLI (in Docker Compose, prefix commands with `docker compose exec sync-server`; in Unraid, run them in the container's Console), then use the web UI for everything after that:
 ```
 node dist/cli.js user add <your-username> --password <a-strong-password> --admin
 ```
-
-Then create a shared folder ("room") and give yourself edit access:
-
-```
-node dist/cli.js room create my-notes --label "My Notes"
-node dist/cli.js room grant my-notes <your-username> editor
-```
-
-A few other commands you'll likely reach for soon (the [full list](#every-admin-command) is below):
-```
-node dist/cli.js user add <username> --password <pw>          # add someone else (leave off --admin for a normal user)
-node dist/cli.js room grant my-notes <username> viewer         # let them see the room but not edit it
-node dist/cli.js room grant my-notes <username> editor         # let them edit it too
-```
+The [full CLI command list](#every-admin-command) below still works too, if you'd rather script things than click through the UI.
 
 ## Step 3: Install the Obsidian plugin
 

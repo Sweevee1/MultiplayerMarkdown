@@ -9,6 +9,8 @@ services:
     restart: unless-stopped
     environment:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env — see .env.example}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - PORT=4444
       - HTTP_API_PORT=4445
       - VAULTS_ROOT=/data/vaults

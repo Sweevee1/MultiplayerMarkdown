@@ -22,6 +22,8 @@ It deploys the same two-container setup as this repo's `docker-compose.yml` — 
        restart: unless-stopped
        environment:
          - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in this stack's .env}
+         - ADMIN_USERNAME=${ADMIN_USERNAME:-}
+         - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
          - PORT=4444
          - HTTP_API_PORT=4445
          - VAULTS_ROOT=/data/vaults
@@ -54,8 +56,9 @@ It deploys the same two-container setup as this repo's `docker-compose.yml` — 
 3. This stack has its own `.env` editor (same GUI, no command line). Set:
    - `JWT_SECRET` — generate with `openssl rand -hex 32` from Unraid's built-in terminal (the `>_` icon top-right).
    - `DOMAIN` — your real domain name for a real deployment, or `localhost` to just try it out locally.
+   - `ADMIN_USERNAME` / `ADMIN_PASSWORD` — pick a username and password now, and the server creates that admin account for you the first time it starts. No terminal needed for this part.
 4. Create the file the stack needs at `/mnt/user/appdata/multiplayer-markdown/Caddyfile`, with the exact contents of this repo's [`Caddyfile`](../Caddyfile).
 5. Start the stack. Check the `sync-server` log for a "running" message, and the `caddy` log for "certificate obtained successfully".
 6. If you're using a real domain (not `localhost`): forward ports 80 and 443 on your router to your Unraid box, and point your domain's DNS at your home internet's public IP. Without this, Caddy can't get a real certificate — `localhost` skips this entirely and self-signs one automatically.
 
-Once it's running, go back to the main [README](../README.md#step-2-create-your-account) to create your account and install the Obsidian plugin.
+Once it's running, log into `https://<your-domain>/api/admin` with the `ADMIN_USERNAME`/`ADMIN_PASSWORD` you set, then go back to the main [README](../README.md#step-3-install-the-obsidian-plugin) to install the Obsidian plugin.
