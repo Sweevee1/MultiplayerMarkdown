@@ -8,18 +8,22 @@
   vertical-align: middle;
 }
 
-.mm-shared-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background-color: var(--text-faint);
+.mm-shared-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-faint);
   flex-shrink: 0;
 }
 
+.mm-shared-icon svg {
+  width: 10px;
+  height: 10px;
+}
+
 .mm-presence-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
+  width: 10px;
+  height: 5px;
+  border-radius: 2.5px;
   flex-shrink: 0;
   box-shadow: 0 0 0 1px var(--background-primary);
 }

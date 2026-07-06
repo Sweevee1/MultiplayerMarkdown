@@ -1,4 +1,4 @@
-import type { App, WorkspaceLeaf } from "obsidian";
+import { setIcon, type App, type WorkspaceLeaf } from "obsidian";
 import { colorForUsername, type ActiveRoom, type RoomManager } from "./room-manager.js";
 
 const BADGE_CLASS = "mm-folder-badge";
@@ -66,8 +66,9 @@ function renderBadge(item: FileExplorerItem, users: PresenceUser[]): void {
 
   const badge = host.createSpan({ cls: BADGE_CLASS });
 
-  const sharedDot = badge.createSpan({ cls: "mm-shared-dot" });
-  sharedDot.setAttribute("title", "Shared room");
+  const sharedIcon = badge.createSpan({ cls: "mm-shared-icon" });
+  setIcon(sharedIcon, "link");
+  sharedIcon.setAttribute("title", "Shared room");
 
   for (const user of users.slice(0, MAX_VISIBLE_DOTS)) {
     const dot = badge.createSpan({ cls: "mm-presence-dot" });
