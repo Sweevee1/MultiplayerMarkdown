@@ -11,6 +11,7 @@
     "verify:persistence": "tsx src/verify-persistence.ts",
     "verify:auth": "tsx src/verify-auth.ts",
     "verify:attachments": "tsx src/verify-attachments.ts",
+    "verify:admin": "tsx src/verify-admin-api.ts",
     "cli": "tsx src/cli.ts"
   },
   "dependencies": {

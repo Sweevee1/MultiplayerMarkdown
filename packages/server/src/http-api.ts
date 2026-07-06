@@ -1,11 +1,37 @@
 import * as http from "node:http";
 import type Database from "better-sqlite3";
-import { getUserByUsername, listRoomsForUser } from "./db.js";
-import { verifyPassword, signJwt, verifyJwt, authenticateForRoom } from "./auth.js";
+import {
+  getUserByUsername,
+  listRoomsForUser,
+  listUsers,
+  createUser,
+  bumpTokenVersion,
+  deleteUser,
+  listRooms,
+  createRoom,
+  getRoom,
+  listMembersForRoom,
+  grantRoomAccess,
+  revokeRoomAccess,
+} from "./db.js";
+import {
+  verifyPassword,
+  signJwt,
+  verifyJwt,
+  authenticateForRoom,
+  authenticateAdmin,
+  hashPassword,
+  type AuthenticatedAdmin,
+} from "./auth.js";
 import { attachmentExists, readAttachment, writeAttachment } from "./attachments.js";
+import { ADMIN_HTML } from "./admin-ui.js";
 
 const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024; // 50MB — generous for note attachments, bounds memory use
 const ATTACHMENT_ROUTE = /^\/api\/rooms\/([^/]+)\/attachments\/([0-9a-f]{64})$/;
+const ADMIN_USER_REVOKE_ROUTE = /^\/api\/admin\/users\/([^/]+)\/revoke$/;
+const ADMIN_USER_ROUTE = /^\/api\/admin\/users\/([^/]+)$/;
+const ADMIN_ROOM_MEMBERS_ROUTE = /^\/api\/admin\/rooms\/([^/]+)\/members$/;
+const ADMIN_ROOM_MEMBER_ROUTE = /^\/api\/admin\/rooms\/([^/]+)\/members\/([^/]+)$/;
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
@@ -87,6 +113,29 @@ function getBearerToken(req: http.IncomingMessage): string | null {
   return header.slice("Bearer ".length);
 }
 
+// Shared by all nine /api/admin/* action routes below — inlining
+// authenticateAdmin's try/catch at each call site (as the single-use
+// attachment route does with authenticateForRoom) would repeat the same
+// 8 lines 9 times, so this one is worth extracting.
+function requireAdmin(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  db: Database.Database,
+  jwtSecret: string
+): AuthenticatedAdmin | null {
+  const token = getBearerToken(req);
+  if (!token) {
+    sendJson(res, 401, { error: "Missing bearer token" });
+    return null;
+  }
+  try {
+    return authenticateAdmin(db, jwtSecret, token);
+  } catch (err) {
+    sendJson(res, 403, { error: err instanceof Error ? err.message : "Not authorized" });
+    return null;
+  }
+}
+
 export interface HttpApiOptions {
   db: Database.Database;
   jwtSecret: string;
@@ -154,6 +203,158 @@ export function createHttpApiServer({ db, jwtSecret, attachmentsRoot }: HttpApiO
           role: room.role,
         }));
         sendJson(res, 200, { rooms });
+        return;
+      }
+
+      // The page itself has no secrets — it's static HTML/JS. Only the
+      // /api/admin/* actions below are auth-gated (see requireAdmin).
+      if (req.method === "GET" && url.pathname === "/api/admin") {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(ADMIN_HTML);
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/admin/users") {
+        if (!requireAdmin(req, res, db, jwtSecret)) return;
+        const users = listUsers(db).map((u) => ({
+          id: u.id,
+          username: u.username,
+          isAdmin: u.is_admin === 1,
+          createdAt: u.created_at,
+        }));
+        sendJson(res, 200, { users });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/admin/users") {
+        if (!requireAdmin(req, res, db, jwtSecret)) return;
+        const body = await readJsonBody(req);
+        const username = typeof body.username === "string" ? body.username.trim() : "";
+        const password = typeof body.password === "string" ? body.password : "";
+        const isAdminFlag = body.isAdmin === true;
+        if (!username || !password) {
+          sendJson(res, 400, { error: "username and password are required" });
+          return;
+        }
+        if (getUserByUsername(db, username)) {
+          sendJson(res, 409, { error: `User ${username} already exists` });
+          return;
+        }
+        const passwordHash = await hashPassword(password);
+        const user = createUser(db, username, passwordHash, isAdminFlag);
+        sendJson(res, 201, {
+          id: user.id,
+          username: user.username,
+          isAdmin: user.is_admin === 1,
+          createdAt: user.created_at,
+        });
+        return;
+      }
+
+      const revokeUserMatch = url.pathname.match(ADMIN_USER_REVOKE_ROUTE);
+      if (revokeUserMatch && req.method === "POST") {
+        if (!requireAdmin(req, res, db, jwtSecret)) return;
+        const username = decodeURIComponent(revokeUserMatch[1]);
+        const user = getUserByUsername(db, username);
+        if (!user) {
+          sendJson(res, 404, { error: `No such user: ${username}` });
+          return;
+        }
+        bumpTokenVersion(db, user.id);
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      const userMatch = url.pathname.match(ADMIN_USER_ROUTE);
+      if (userMatch && req.method === "DELETE") {
+        if (!requireAdmin(req, res, db, jwtSecret)) return;
+        const username = decodeURIComponent(userMatch[1]);
+        const user = getUserByUsername(db, username);
+        if (!user) {
+          sendJson(res, 404, { error: `No such user: ${username}` });
+          return;
+        }
+        deleteUser(db, user.id);
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/admin/rooms") {
+        if (!requireAdmin(req, res, db, jwtSecret)) return;
+        sendJson(res, 200, { rooms: listRooms(db) });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/admin/rooms") {
+        if (!requireAdmin(req, res, db, jwtSecret)) return;
+        const body = await readJsonBody(req);
+        const roomId = typeof body.roomId === "string" ? body.roomId.trim() : "";
+        const label = typeof body.label === "string" && body.label.trim() ? body.label.trim() : roomId;
+        if (!roomId) {
+          sendJson(res, 400, { error: "roomId is required" });
+          return;
+        }
+        if (getRoom(db, roomId)) {
+          sendJson(res, 409, { error: `Room ${roomId} already exists` });
+          return;
+        }
+        const room = createRoom(db, roomId, label);
+        sendJson(res, 201, room);
+        return;
+      }
+
+      const roomMembersMatch = url.pathname.match(ADMIN_ROOM_MEMBERS_ROUTE);
+      if (roomMembersMatch && req.method === "GET") {
+        if (!requireAdmin(req, res, db, jwtSecret)) return;
+        const roomId = decodeURIComponent(roomMembersMatch[1]);
+        if (!getRoom(db, roomId)) {
+          sendJson(res, 404, { error: `No such room: ${roomId}` });
+          return;
+        }
+        sendJson(res, 200, { members: listMembersForRoom(db, roomId) });
+        return;
+      }
+
+      if (roomMembersMatch && req.method === "POST") {
+        if (!requireAdmin(req, res, db, jwtSecret)) return;
+        const roomId = decodeURIComponent(roomMembersMatch[1]);
+        const body = await readJsonBody(req);
+        const username = typeof body.username === "string" ? body.username.trim() : "";
+        const role = body.role;
+        if (!username || (role !== "viewer" && role !== "editor")) {
+          sendJson(res, 400, { error: "username and role ('viewer'|'editor') are required" });
+          return;
+        }
+        // Order matches cli.ts's `room grant`: user existence checked before room existence.
+        const user = getUserByUsername(db, username);
+        if (!user) {
+          sendJson(res, 404, { error: `No such user: ${username}` });
+          return;
+        }
+        if (!getRoom(db, roomId)) {
+          sendJson(res, 404, { error: `No such room: ${roomId}` });
+          return;
+        }
+        grantRoomAccess(db, roomId, user.id, role);
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      const roomMemberMatch = url.pathname.match(ADMIN_ROOM_MEMBER_ROUTE);
+      if (roomMemberMatch && req.method === "DELETE") {
+        if (!requireAdmin(req, res, db, jwtSecret)) return;
+        const roomId = decodeURIComponent(roomMemberMatch[1]);
+        const username = decodeURIComponent(roomMemberMatch[2]);
+        // Deliberately mirrors cli.ts's `room revoke`: does not validate the
+        // room exists first, only the user — pre-existing minor inconsistency,
+        // not fixed here since scope is CLI parity, not CLI improvement.
+        const user = getUserByUsername(db, username);
+        if (!user) {
+          sendJson(res, 404, { error: `No such user: ${username}` });
+          return;
+        }
+        revokeRoomAccess(db, roomId, user.id);
+        sendJson(res, 200, { ok: true });
         return;
       }
 

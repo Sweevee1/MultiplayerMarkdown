@@ -70,6 +70,43 @@ export function authenticateForRoom(
   return { userId: user.id, username: user.username, role: membership.role };
 }
 
+export interface AuthenticatedAdmin {
+  userId: number;
+  username: string;
+}
+
+/**
+ * Same verification chain as authenticateForRoom (verify the JWT, then
+ * re-check token_version against the DB so revocation is instant), but the
+ * authorization condition is "is this user an admin" instead of room
+ * membership. JWTs never carry an admin claim — is_admin is re-read from
+ * the database on every call, so revoking admin status takes effect on the
+ * very next request, not just the next login.
+ */
+export function authenticateAdmin(
+  db: Database.Database,
+  jwtSecret: string,
+  token: string
+): AuthenticatedAdmin {
+  let payload: AppJwtPayload;
+  try {
+    payload = verifyJwt(token, jwtSecret);
+  } catch {
+    throw new Error("Invalid or expired token");
+  }
+
+  const user = getUserById(db, payload.sub);
+  if (!user || user.token_version !== payload.tokenVersion) {
+    throw new Error("Token has been revoked");
+  }
+
+  if (user.is_admin !== 1) {
+    throw new Error(`User ${user.username} is not an admin`);
+  }
+
+  return { userId: user.id, username: user.username };
+}
+
 /**
  * Confirmed against Hocuspocus's actual source: setting
  * connectionConfig.readOnly = true here causes the server to silently drop
