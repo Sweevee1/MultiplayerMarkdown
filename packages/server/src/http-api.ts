@@ -7,6 +7,50 @@ import { attachmentExists, readAttachment, writeAttachment } from "./attachments
 const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024; // 50MB — generous for note attachments, bounds memory use
 const ATTACHMENT_ROUTE = /^\/api\/rooms\/([^/]+)\/attachments\/([0-9a-f]{64})$/;
 
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
+
+interface LoginAttemptState {
+  failures: number;
+  lockedUntil: number;
+}
+
+// In-memory only — resets on server restart, which is fine for a single-process
+// self-hosted deployment. Keyed by client IP so brute-forcing /api/login from
+// a public hostname (e.g. behind a Cloudflare Tunnel) gets locked out.
+const loginAttempts = new Map<string, LoginAttemptState>();
+
+function getClientKey(req: http.IncomingMessage): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.length > 0) {
+    return forwarded.split(",")[0].trim();
+  }
+  return req.socket.remoteAddress ?? "unknown";
+}
+
+function isLockedOut(key: string): boolean {
+  const state = loginAttempts.get(key);
+  if (!state?.lockedUntil) return false;
+  if (state.lockedUntil <= Date.now()) {
+    loginAttempts.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function recordLoginFailure(key: string): void {
+  const state = loginAttempts.get(key) ?? { failures: 0, lockedUntil: 0 };
+  state.failures += 1;
+  if (state.failures >= MAX_LOGIN_ATTEMPTS) {
+    state.lockedUntil = Date.now() + LOGIN_LOCKOUT_MS;
+  }
+  loginAttempts.set(key, state);
+}
+
+function recordLoginSuccess(key: string): void {
+  loginAttempts.delete(key);
+}
+
 function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
   const json = JSON.stringify(body);
   res.writeHead(status, {
@@ -66,16 +110,24 @@ export function createHttpApiServer({ db, jwtSecret, attachmentsRoot }: HttpApiO
       const url = new URL(req.url ?? "/", "http://localhost");
 
       if (req.method === "POST" && url.pathname === "/api/login") {
+        const clientKey = getClientKey(req);
+        if (isLockedOut(clientKey)) {
+          sendJson(res, 429, { error: "Too many failed login attempts. Try again later." });
+          return;
+        }
+
         const body = await readJsonBody(req);
         const username = typeof body.username === "string" ? body.username : "";
         const password = typeof body.password === "string" ? body.password : "";
 
         const user = getUserByUsername(db, username);
         if (!user || !(await verifyPassword(user.password_hash, password))) {
+          recordLoginFailure(clientKey);
           sendJson(res, 401, { error: "Invalid username or password" });
           return;
         }
 
+        recordLoginSuccess(clientKey);
         const token = signJwt({ sub: user.id, tokenVersion: user.token_version }, jwtSecret);
         sendJson(res, 200, { token, username: user.username });
         return;
