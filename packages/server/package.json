@@ -13,6 +13,7 @@
     "verify:attachments": "tsx src/verify-attachments.ts",
     "verify:admin": "tsx src/verify-admin-api.ts",
     "verify:rooms": "tsx src/verify-rooms.ts",
+    "verify:offline-merge": "tsx src/verify-offline-merge.ts",
     "cli": "tsx src/cli.ts"
   },
   "dependencies": {
@@ -31,6 +32,8 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/jsonwebtoken": "^9.0.10",
     "@hocuspocus/provider": "^4.3.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "y-indexeddb": "^9.0.12",
+    "fake-indexeddb": "^6.2.2"
   }
 }

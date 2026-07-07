@@ -44,11 +44,27 @@ jobs:
             exit 1
           fi
 
+      # The required-files list is defined exactly ONCE here and reused for
+      # both the existence check and the actual upload below — structurally
+      # impossible for "what we check" and "what we ship" to drift apart
+      # again. (This is what silently omitted styles.css before: the old
+      # static `files:` list in this workflow was a second, independent copy
+      # of "what should ship" that nobody kept in sync with reality.)
+      - name: Verify required plugin assets exist
+        run: |
+          REQUIRED_FILES="packages/plugin/main.js packages/plugin/manifest.json packages/plugin/styles.css"
+          for f in $REQUIRED_FILES; do
+            if [ ! -f "$f" ]; then
+              echo "Required release asset is missing: $f"
+              exit 1
+            fi
+          done
+          echo "REQUIRED_FILES=$REQUIRED_FILES" >> "$GITHUB_ENV"
+
       - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          files: |
-            packages/plugin/main.js
-            packages/plugin/manifest.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" $REQUIRED_FILES \
+            --title "${{ github.ref_name }}" \
+            --notes "Release ${{ github.ref_name }}"

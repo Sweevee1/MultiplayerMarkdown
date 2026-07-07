@@ -40,3 +40,60 @@
   padding-left: 0.75em;
   border-left: 2px solid var(--background-modifier-border);
 }
+
+/*
+ * Remote cursor widget (see remote-selections.ts's YRemoteCaretWidget). This
+ * markup was never given layout rules anywhere in the project — the caret
+ * and its name tag rendered with zero size/position and were effectively
+ * invisible, even though the DOM nodes and inline color were correct.
+ * .cm-ySelection/.cm-yLineSelection (the selection-range highlight) already
+ * get their background-color set inline per-decoration, so no rules are
+ * needed for those here.
+ */
+.cm-ySelectionCaret {
+  position: relative;
+  border-left: 2px solid;
+  border-right: 2px solid;
+  margin-left: -2px;
+  margin-right: -2px;
+  box-sizing: border-box;
+  display: inline;
+  pointer-events: none;
+}
+
+.cm-ySelectionCaretDot {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: inherit;
+  pointer-events: none;
+}
+
+.cm-ySelectionInfo {
+  position: absolute;
+  top: -1.4em;
+  left: -2px;
+  font-size: 0.7em;
+  line-height: normal;
+  background-color: inherit;
+  color: #fff;
+  padding: 1px 4px;
+  border-radius: 3px 3px 3px 0;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(2px);
+  transition:
+    opacity 0.12s ease-in-out,
+    transform 0.12s ease-in-out;
+  z-index: 101;
+}
+
+.cm-ySelectionCaret:hover .cm-ySelectionInfo {
+  opacity: 1;
+  transform: translateY(0);
+}

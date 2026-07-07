@@ -7,7 +7,8 @@
   "scripts": {
     "build": "pnpm -r run build",
     "dev:server": "pnpm --filter @multiplayer-markdown/server run dev",
-    "dev:plugin": "pnpm --filter @multiplayer-markdown/plugin run dev"
+    "dev:plugin": "pnpm --filter @multiplayer-markdown/plugin run dev",
+    "test": "pnpm --filter @multiplayer-markdown/sync-core run verify && pnpm --filter @multiplayer-markdown/server run verify:sync && pnpm --filter @multiplayer-markdown/server run verify:persistence && pnpm --filter @multiplayer-markdown/server run verify:auth && pnpm --filter @multiplayer-markdown/server run verify:attachments && pnpm --filter @multiplayer-markdown/server run verify:admin && pnpm --filter @multiplayer-markdown/server run verify:rooms && pnpm --filter @multiplayer-markdown/server run verify:offline-merge"
   },
   "engines": {
     "node": ">=22"

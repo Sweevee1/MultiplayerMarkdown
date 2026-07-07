@@ -1,5 +1,6 @@
 import type { App } from "obsidian";
 import { HocuspocusProvider } from "@hocuspocus/provider";
+import { IndexeddbPersistence } from "y-indexeddb";
 import { roomDocumentName, isUnderFolder } from "@multiplayer-markdown/sync-core";
 import { FileSyncEngine } from "./file-sync-engine.js";
 import type { LinkedRoom, Role } from "./settings.js";
@@ -10,6 +11,7 @@ export interface ActiveRoom {
   role: Role;
   provider: HocuspocusProvider;
   syncEngine: FileSyncEngine;
+  indexeddbPersistence: IndexeddbPersistence;
 }
 
 function waitForSynced(provider: HocuspocusProvider, timeoutMs = 5000): Promise<void> {
@@ -95,6 +97,7 @@ export class RoomManager {
       if (!wanted.has(roomId)) {
         room.syncEngine.stop();
         room.provider.destroy();
+        void room.indexeddbPersistence.destroy();
         this.active.delete(roomId);
       }
     }
@@ -120,6 +123,26 @@ export class RoomManager {
         },
       });
 
+      // Loads this room's last-known state from IndexedDB into the doc
+      // *before* anything else touches it. Without this, a fresh Y.Doc
+      // created after an app restart has no idea a given file's Y.Text
+      // already exists on the server — initialScan()'s setFileContent then
+      // calls getOrCreateFileText, which (finding no local key) creates a
+      // brand-new Y.Text for that path. Two independently-created Y.Text
+      // objects assigned to the same Y.Map key don't merge on sync: Yjs's
+      // last-writer-wins conflict resolution for a Y.Map key keeps exactly
+      // one of them and silently discards the other's entire content —
+      // confirmed directly (a client's offline edits vanished completely
+      // after reconnecting). Hydrating from IndexedDB first means the doc
+      // already has the real Y.Text for every previously-synced file, so
+      // offline edits land in reconcileYTextWithContent's diff-merge against
+      // the *same* object instead of colliding with it.
+      const indexeddbPersistence = new IndexeddbPersistence(
+        `multiplayer-markdown:${this.app.vault.getName()}:${linked.roomId}`,
+        provider.document
+      );
+      await indexeddbPersistence.whenSynced;
+
       const username = this.getUsername();
       if (username) {
         provider.awareness?.setLocalStateField("user", { name: username, color: colorForUsername(username) });
@@ -142,6 +165,7 @@ export class RoomManager {
         role: linked.role,
         provider,
         syncEngine,
+        indexeddbPersistence,
       };
       this.active.set(linked.roomId, activeRoom);
 
@@ -154,6 +178,7 @@ export class RoomManager {
     for (const room of this.active.values()) {
       room.syncEngine.stop();
       room.provider.destroy();
+      void room.indexeddbPersistence.destroy();
     }
     this.active.clear();
     this.liveBoundPaths.clear();

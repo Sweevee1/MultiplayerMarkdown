@@ -1,0 +1,45 @@
+name: CI
+
+# Runs the full headless verification suite on every push and pull request.
+# Before this workflow existed, every verify:* script (sync-core's unit
+# tests, and the server's sync/persistence/auth/attachments/admin/rooms/
+# offline-merge tests) only ran when a human remembered to type the
+# command by hand — a real regression (the offline-edit data-loss bug)
+# reached a live production deployment undetected because nothing forced
+# these tests to run on every change. This workflow closes that gap.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build sync-core
+        run: pnpm --filter @multiplayer-markdown/sync-core run build
+
+      - name: Build server
+        run: pnpm --filter @multiplayer-markdown/server run build
+
+      - name: Build plugin
+        run: pnpm --filter @multiplayer-markdown/plugin run build
+
+      - name: Run full verify suite
+        run: pnpm run test

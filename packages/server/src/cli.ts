@@ -5,6 +5,7 @@ import {
   getUserByUsername,
   listUsers,
   bumpTokenVersion,
+  setPasswordHash,
   deleteUser,
   createRoom,
   getRoom,
@@ -28,6 +29,7 @@ function usage(): void {
   user add <username> --password <password> [--admin]
   user list
   user revoke <username>          # bumps token_version, invalidates all sessions
+  user set-password <username> --password <password>
   user delete <username>
 
   room create <roomId> [--label <label>]
@@ -75,6 +77,21 @@ async function main(): Promise<void> {
     }
     bumpTokenVersion(db, user.id);
     console.log(`Revoked all sessions for ${username} — they must log in again`);
+    return;
+  }
+
+  if (resource === "user" && action === "set-password") {
+    const username = rest[0];
+    const password = getFlag(rest, "--password");
+    const user = username ? getUserByUsername(db, username) : undefined;
+    if (!user || !password) {
+      console.error(!user ? `No such user: ${username ?? "(none given)"}` : "Missing --password");
+      process.exitCode = 1;
+      return;
+    }
+    setPasswordHash(db, user.id, await hashPassword(password));
+    bumpTokenVersion(db, user.id);
+    console.log(`Password updated for ${username} — existing sessions invalidated`);
     return;
   }
 

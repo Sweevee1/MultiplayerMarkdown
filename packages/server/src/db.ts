@@ -79,6 +79,10 @@ export function bumpTokenVersion(db: Database.Database, userId: number): void {
   db.prepare("UPDATE users SET token_version = token_version + 1 WHERE id = ?").run(userId);
 }
 
+export function setPasswordHash(db: Database.Database, userId: number, passwordHash: string): void {
+  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, userId);
+}
+
 export function deleteUser(db: Database.Database, userId: number): void {
   db.prepare("DELETE FROM users WHERE id = ?").run(userId);
 }
