@@ -1,7 +1,7 @@
 {
   "id": "multiplayer-markdown",
   "name": "Multiplayer Markdown",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "minAppVersion": "1.5.0",
   "description": "Self-hosted real-time collaborative editing for Obsidian vaults, with per-folder permissions.",
   "author": "Sweevee1",
