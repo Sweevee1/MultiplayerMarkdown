@@ -49,14 +49,21 @@ class YRemoteCaretWidget extends WidgetType {
   toDOM(): HTMLElement {
     const wrap = document.createElement("span");
     wrap.className = "cm-ySelectionCaret";
-    wrap.style.backgroundColor = this.color;
+    // Only the border is colored here — the dot/info tag set their own
+    // background-color directly below instead of inheriting from this
+    // wrapper. Setting a background on the wrap itself would paint the
+    // wrap's *entire* box, including the transparent hover-hit-area padding
+    // in styles.css, making the caret look like a thick solid block instead
+    // of a thin line (this was a real bug, not just a style choice).
     wrap.style.borderColor = this.color;
     wrap.appendChild(document.createTextNode("⁠"));
     const dot = wrap.appendChild(document.createElement("div"));
     dot.className = "cm-ySelectionCaretDot";
+    dot.style.backgroundColor = this.color;
     wrap.appendChild(document.createTextNode("⁠"));
     const info = wrap.appendChild(document.createElement("div"));
     info.className = "cm-ySelectionInfo";
+    info.style.backgroundColor = this.color;
     info.textContent = this.name;
     wrap.appendChild(document.createTextNode("⁠"));
     return wrap;
@@ -178,7 +185,14 @@ class HardenedRemoteSelectionsPluginValue implements PluginValue {
         }
 
         const { color = "#30bced", name = "Anonymous" } = state.user || {};
-        const colorLight = (state.user && state.user.colorLight) || color + "33";
+        // `color + "33"` (a hex-alpha suffix trick) only produces valid CSS
+        // when `color` is actually hex — colorForUsername() returns an
+        // `hsl(...)` string, so that fallback silently produced invalid CSS
+        // the browser rejects entirely (confirmed via getComputedStyle
+        // reporting fully transparent). color-mix() works for any valid CSS
+        // color syntax, so it can't drift out of sync with whatever format
+        // colorForUsername happens to use.
+        const colorLight = (state.user && state.user.colorLight) || `color-mix(in srgb, ${color} 25%, transparent)`;
         const startLine = update.view.state.doc.lineAt(start);
         const endLine = update.view.state.doc.lineAt(end);
 

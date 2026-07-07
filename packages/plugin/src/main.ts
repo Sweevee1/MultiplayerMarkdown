@@ -1,7 +1,7 @@
 import { Plugin, editorInfoField, MarkdownView } from "obsidian";
 import { EditorView, ViewPlugin, PluginValue } from "@codemirror/view";
 import { EditorState, StateEffect, type Extension } from "@codemirror/state";
-import { yCollab, yRemoteSelections } from "y-codemirror.next";
+import { yCollab, yRemoteSelections, yRemoteSelectionsTheme } from "y-codemirror.next";
 import { getOrCreateFileText, toRelativePath } from "@multiplayer-markdown/sync-core";
 import { RoomManager } from "./room-manager.js";
 import { CollabSettingTab } from "./settings-tab.js";
@@ -43,7 +43,18 @@ function bindIfTarget(view: EditorView): void {
     // cursors down with it. yCollab's declared return type is the opaque
     // `Extension`, but it's actually always a flat array at runtime (see its
     // own source) — safe to treat it as one here to filter a specific entry out.
-    const collabExtensions = (yCollab(ytext, awareness) as unknown as Extension[]).filter((ext) => ext !== yRemoteSelections);
+    // Must ALSO drop yRemoteSelectionsTheme, a *separate* extension yCollab
+    // pushes alongside yRemoteSelections (easy to miss since only the
+    // ViewPlugin looks like "the remote-selections code"). It's a CM6
+    // baseTheme injecting its own CSS for the identical class names our
+    // hardened widget reuses (border-left/border-right/etc.) — left in
+    // place, its rules keep applying independently of our own styles.css,
+    // so edits like removing a border there can silently have zero visual
+    // effect. Confirmed directly: a border-right removed from styles.css
+    // kept rendering because this theme's own border-right was still active.
+    const collabExtensions = (yCollab(ytext, awareness) as unknown as Extension[]).filter(
+      (ext) => ext !== yRemoteSelections && ext !== yRemoteSelectionsTheme
+    );
     if (awareness) collabExtensions.push(hardenedRemoteSelections);
     const effects = [StateEffect.appendConfig.of(collabExtensions)];
     if (readOnly) {

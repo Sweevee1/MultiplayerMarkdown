@@ -46,39 +46,62 @@
  * markup was never given layout rules anywhere in the project — the caret
  * and its name tag rendered with zero size/position and were effectively
  * invisible, even though the DOM nodes and inline color were correct.
- * .cm-ySelection/.cm-yLineSelection (the selection-range highlight) already
- * get their background-color set inline per-decoration, so no rules are
- * needed for those here.
+ * .cm-ySelection gets its background-color set inline per-decoration, so no
+ * rule is needed for it here. .cm-yLineSelection needs margin/padding reset
+ * below — it used to come for free from y-codemirror.next's own
+ * yRemoteSelectionsTheme, which is now deliberately excluded (see main.ts)
+ * to stop its conflicting .cm-ySelectionCaret border rules from fighting
+ * ours, but that meant losing this rule too since nothing else provided it.
  */
+.cm-yLineSelection {
+  padding: 0;
+  margin: 0 2px 0 4px;
+}
+
 .cm-ySelectionCaret {
   position: relative;
+  /* A single border-left, not border-left+border-right — with padding,
+     two borders would render as two clearly separate vertical lines
+     (confirmed visually), not one caret. A real text cursor is one line. */
   border-left: 2px solid;
-  border-right: 2px solid;
   margin-left: -2px;
-  margin-right: -2px;
+  /* Deliberately NO horizontal padding here. An earlier attempt added a few
+     transparent px on each side to make hovering easier — but the widget is
+     inserted directly into the text flow, so that padding visibly shoves
+     the surrounding letters apart whenever the cursor lands mid-word (which
+     is most of the time during an active drag-select) — this is what
+     actually caused the reported "spacing gets wonky while selecting". A
+     bigger invisible hover target isn't worth text-flow side effects; match
+     upstream's un-padded caret exactly. */
   box-sizing: border-box;
   display: inline;
-  pointer-events: none;
+  /* Must NOT be "none" — that would make the browser never dispatch hover
+     events to this element at all, permanently disabling the :hover rule
+     below that reveals the name tag. This was the actual bug: the caret
+     had pointer-events:none, so hovering it could never do anything. */
+  pointer-events: auto;
+  cursor: default;
 }
 
 .cm-ySelectionCaretDot {
   position: absolute;
   top: -4px;
-  left: -4px;
+  /* Centered on the border-left line (2px wide, sitting just left of the
+     padding-box edge at x=0): border center is at x=-1, dot is 8px wide,
+     so its left edge must be at -1 - 4 = -5. */
+  left: -5px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: inherit;
   pointer-events: none;
 }
 
 .cm-ySelectionInfo {
   position: absolute;
   top: -1.4em;
-  left: -2px;
+  left: -1px;
   font-size: 0.7em;
   line-height: normal;
-  background-color: inherit;
   color: #fff;
   padding: 1px 4px;
   border-radius: 3px 3px 3px 0;
